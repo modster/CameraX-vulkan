@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalCamera2Interop::class)
 
 package com.plcoding.cameraxguide
 
@@ -15,6 +15,10 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture.OnImageCapturedCallback
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
+import androidx.camera.camera2.interop.Camera2CameraControl
+import androidx.camera.camera2.interop.CaptureRequestOptions
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
+import android.hardware.camera2.CaptureRequest
 import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
 import androidx.compose.foundation.background
@@ -57,6 +61,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,6 +79,8 @@ import com.plcoding.cameraxguide.data.PhotoRepositoryImpl
 import com.plcoding.cameraxguide.ui.theme.AppShapes
 import com.plcoding.cameraxguide.ui.theme.AppSpacing
 import com.plcoding.cameraxguide.ui.theme.CameraXGuideTheme
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -96,6 +103,7 @@ class MainActivity : ComponentActivity() {
                 var whiteBalance by remember { mutableFloatStateOf(5600f) }
                 var evBias by remember { mutableFloatStateOf(-0.3f) }
                 var blendModeIndex by remember { mutableIntStateOf(1) }
+                var blendStrength by remember { mutableFloatStateOf(0.75f) }
                 val controller = remember {
                     LifecycleCameraController(applicationContext).apply {
                         setEnabledUseCases(
@@ -131,6 +139,17 @@ class MainActivity : ComponentActivity() {
                     onDispose {
                         lifecycleOwner.lifecycle.removeObserver(observer)
                     }
+                }
+
+                // Wire ISO and shutter speed to the camera hardware via Camera2 interop.
+                // A 150 ms debounce prevents flooding the camera with requests while
+                // the user drags a slider.
+                LaunchedEffect(Unit) {
+                    snapshotFlow { Pair(iso, shutter) }
+                        .debounce(150L)
+                        .collectLatest { (currentIso, currentShutter) ->
+                            applyManualExposure(controller, currentIso, currentShutter)
+                        }
                 }
 
                 BottomSheetScaffold(
@@ -213,7 +232,9 @@ class MainActivity : ComponentActivity() {
                                 evBias = evBias,
                                 onEvBiasChange = { evBias = it },
                                 blendModeIndex = blendModeIndex,
-                                onBlendModeSelected = { blendModeIndex = it }
+                                onBlendModeSelected = { blendModeIndex = it },
+                                blendStrength = blendStrength,
+                                onBlendStrengthChange = { blendStrength = it }
                             )
                             Spacer(modifier = Modifier.height(AppSpacing.Gutter))
                             BottomCaptureNav(
@@ -224,7 +245,7 @@ class MainActivity : ComponentActivity() {
                                     takePhoto(
                                         controller = controller,
                                         onPhotoTaken = { bitmap ->
-                                            viewModel.onTakePhoto(bitmap)
+                                            viewModel.onTakePhoto(bitmap, blendModeIndex, blendStrength)
                                             viewModel.onPersistPhoto(bitmap)
                                         }
                                     )
@@ -269,6 +290,42 @@ class MainActivity : ComponentActivity() {
                 }
             }
         )
+    }
+
+    /**
+     * Applies manual ISO sensitivity and shutter speed to the camera via Camera2 interop.
+     *
+     * Auto-Exposure is disabled so the supplied values are honoured. Shutter speed is
+     * clamped to a minimum of 1 ms to avoid passing an invalid 0-nanosecond value.
+     * Any failure (e.g. device does not support manual exposure) is logged and swallowed.
+     */
+    private fun applyManualExposure(
+        controller: LifecycleCameraController,
+        iso: Float,
+        shutterSeconds: Float
+    ) {
+        try {
+            val shutterNs = (shutterSeconds * 1_000_000_000L)
+                .coerceAtLeast(1_000_000L) // minimum 1 ms – 0 ns is not a valid sensor exposure time
+            val options = CaptureRequestOptions.Builder()
+                .setCaptureRequestOption(
+                    CaptureRequest.CONTROL_AE_MODE,
+                    CaptureRequest.CONTROL_AE_MODE_OFF
+                )
+                .setCaptureRequestOption(
+                    CaptureRequest.SENSOR_SENSITIVITY,
+                    iso.toInt().coerceIn(50, 12800) // typical device ISO range; actual limits vary
+                )
+                .setCaptureRequestOption(
+                    CaptureRequest.SENSOR_EXPOSURE_TIME,
+                    shutterNs
+                )
+                .build()
+            Camera2CameraControl.from(controller.cameraControl)
+                .setCaptureRequestOptions(options)
+        } catch (e: Exception) {
+            Log.w("Camera", "Manual exposure not applied: ${e.message}")
+        }
     }
 
     private fun hasRequiredPermissions(): Boolean {
@@ -430,7 +487,9 @@ private fun ManualControlsDrawer(
     evBias: Float,
     onEvBiasChange: (Float) -> Unit,
     blendModeIndex: Int,
-    onBlendModeSelected: (Int) -> Unit
+    onBlendModeSelected: (Int) -> Unit,
+    blendStrength: Float,
+    onBlendStrengthChange: (Float) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -476,6 +535,14 @@ private fun ManualControlsDrawer(
                 }
             }
         }
+
+        LabeledSlider(
+            label = "BLEND STRENGTH",
+            valueText = "${"%.0f".format(blendStrength * 100)}%",
+            value = blendStrength,
+            range = 0f..1f,
+            onValueChange = onBlendStrengthChange
+        )
     }
 }
 
