@@ -12,11 +12,19 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture.OnImageCapturedCallback
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -34,11 +42,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cameraswitch
+import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.Photo
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -60,7 +71,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
@@ -75,6 +89,7 @@ import com.plcoding.cameraxguide.ui.theme.AppShapes
 import com.plcoding.cameraxguide.ui.theme.AppSpacing
 import com.plcoding.cameraxguide.ui.theme.CameraXGuideTheme
 import kotlinx.coroutines.launch
+import java.util.concurrent.Executors
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -100,8 +115,11 @@ class MainActivity : ComponentActivity() {
                     LifecycleCameraController(applicationContext).apply {
                         setEnabledUseCases(
                             CameraController.IMAGE_CAPTURE or
-                                CameraController.VIDEO_CAPTURE
+                                CameraController.VIDEO_CAPTURE or
+                                CameraController.IMAGE_ANALYSIS
                         )
+                        imageAnalysisBackpressureStrategy =
+                            ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
                     }
                 }
                 val photoRepository = remember {
@@ -114,6 +132,35 @@ class MainActivity : ComponentActivity() {
                 )
                 val bitmaps by viewModel.bitmaps.collectAsState()
                 val photos by viewModel.photos.collectAsState()
+                val isLongExposureActive by viewModel.isLongExposureActive.collectAsState()
+                val liveAccumulatedFrame by viewModel.liveAccumulatedFrame.collectAsState()
+                val exposureDurationMs by viewModel.exposureDurationMs.collectAsState()
+
+                // Set up the ImageAnalysis analyser on a dedicated background thread.
+                // Each camera frame is forwarded to the ViewModel which decides whether to
+                // accumulate it (GPU-pipeline-style) based on the long-exposure active flag.
+                val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
+                DisposableEffect(controller, viewModel) {
+                    controller.setImageAnalysisAnalyzer(analysisExecutor) { imageProxy ->
+                        val bitmap = imageProxy.toBitmap()
+                        // Scale down to a manageable resolution while preserving the
+                        // camera's native aspect ratio to avoid distortion.
+                        val targetMaxDim = 960
+                        val scaleFactor = targetMaxDim.toFloat() / maxOf(bitmap.width, bitmap.height)
+                        val scaledW = (bitmap.width * scaleFactor).toInt().coerceAtLeast(1)
+                        val scaledH = (bitmap.height * scaleFactor).toInt().coerceAtLeast(1)
+                        val scaled = Bitmap.createScaledBitmap(bitmap, scaledW, scaledH, false)
+                        bitmap.recycle()
+                        viewModel.onFrameAnalyzed(scaled)
+                        scaled.recycle()
+                        imageProxy.close()
+                    }
+                    onDispose {
+                        controller.clearImageAnalysisAnalyzer()
+                        // shutdownNow() immediately stops queued tasks and frees the thread.
+                        analysisExecutor.shutdownNow()
+                    }
+                }
 
                 LaunchedEffect(Unit) {
                     if (hasGalleryReadPermission()) {
@@ -155,6 +202,24 @@ class MainActivity : ComponentActivity() {
                             controller = controller,
                             modifier = Modifier.fillMaxSize()
                         )
+
+                        // Long-exposure ghost overlay — shows accumulated light integration
+                        // in real-time so the user can decide when to stop the exposure.
+                        // Opacity is ~85% so the live camera feed is still visible beneath.
+                        liveAccumulatedFrame?.let { ghost ->
+                            Image(
+                                bitmap = ghost.asImageBitmap(),
+                                contentDescription = "Live long-exposure accumulation",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(
+                                        MaterialTheme.colorScheme.surface.copy(alpha = 0f)
+                                    ),
+                                alpha = 0.85f
+                            )
+                        }
+
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -176,6 +241,8 @@ class MainActivity : ComponentActivity() {
                         TechnicalReadoutStrip(
                             iso = iso.toInt(),
                             shutter = shutter,
+                            isCapturing = isLongExposureActive,
+                            exposureDurationMs = exposureDurationMs,
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
                                 .padding(top = 88.dp)
@@ -217,17 +284,16 @@ class MainActivity : ComponentActivity() {
                             )
                             Spacer(modifier = Modifier.height(AppSpacing.Gutter))
                             BottomCaptureNav(
+                                isCapturing = isLongExposureActive,
                                 onOpenGallery = {
                                     scope.launch { scaffoldState.bottomSheetState.expand() }
                                 },
                                 onCapture = {
-                                    takePhoto(
-                                        controller = controller,
-                                        onPhotoTaken = { bitmap ->
-                                            viewModel.onTakePhoto(bitmap)
-                                            viewModel.onPersistPhoto(bitmap)
-                                        }
-                                    )
+                                    if (isLongExposureActive) {
+                                        viewModel.stopLongExposure()
+                                    } else {
+                                        viewModel.startLongExposure(blendModeIndex)
+                                    }
                                 }
                             )
                         }
@@ -343,8 +409,24 @@ private fun CameraTopBar(
 private fun TechnicalReadoutStrip(
     iso: Int,
     shutter: Float,
+    isCapturing: Boolean,
+    exposureDurationMs: Long,
     modifier: Modifier = Modifier
 ) {
+    val elapsedLabel = if (isCapturing) {
+        val totalSecs = exposureDurationMs / 1000
+        val mins = totalSecs / 60
+        val secs = totalSecs % 60
+        val tenths = (exposureDurationMs % 1000) / 100
+        "${mins}:${secs.toString().padStart(2, '0')}.${tenths}"
+    } else {
+        "STANDBY"
+    }
+    val recColor by animateColorAsState(
+        targetValue = if (isCapturing) MaterialTheme.colorScheme.error
+        else MaterialTheme.colorScheme.onSurfaceVariant,
+        label = "rec_color"
+    )
     Row(
         modifier = modifier
             .clip(RoundedCornerShape(99.dp))
@@ -354,7 +436,18 @@ private fun TechnicalReadoutStrip(
         horizontalArrangement = Arrangement.spacedBy(AppSpacing.Gutter),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text("REC 04:20", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge)
+        Icon(
+            imageVector = Icons.Default.FiberManualRecord,
+            contentDescription = if (isCapturing) "Recording" else "Standby",
+            tint = recColor,
+            modifier = Modifier.size(12.dp)
+        )
+        Text(
+            text = elapsedLabel,
+            color = recColor,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold
+        )
         Text("ISO $iso", color = MaterialTheme.colorScheme.primaryContainer, style = MaterialTheme.typography.titleMedium)
         Text("SS ${"%.1f".format(shutter)}s", color = MaterialTheme.colorScheme.primaryContainer, style = MaterialTheme.typography.titleMedium)
     }
@@ -502,6 +595,7 @@ private fun LabeledSlider(
 
 @Composable
 private fun BottomCaptureNav(
+    isCapturing: Boolean,
     onOpenGallery: () -> Unit,
     onCapture: () -> Unit
 ) {
@@ -519,16 +613,54 @@ private fun BottomCaptureNav(
         GlassIconButton(onClick = {}, imageVector = Icons.Default.Photo, contentDescription = "Mode")
         GlassIconButton(onClick = onOpenGallery, imageVector = Icons.Default.Photo, contentDescription = "Open gallery")
 
-        Button(
-            onClick = onCapture,
-            shape = CircleShape,
-            modifier = Modifier.size(74.dp)
-        ) {
-            Icon(imageVector = Icons.Default.PhotoCamera, contentDescription = "Capture")
-        }
+        CaptureButton(isCapturing = isCapturing, onClick = onCapture)
 
         GlassIconButton(onClick = {}, imageVector = Icons.Default.Cameraswitch, contentDescription = "Effects")
         GlassIconButton(onClick = {}, imageVector = Icons.Default.Settings, contentDescription = "Analytics")
+    }
+}
+
+/**
+ * The central capture/stop button.
+ *
+ * - Idle state: cyan camera icon — tap to begin long-exposure.
+ * - Capturing state: pulsing red stop icon — tap to end exposure and save.
+ */
+@Composable
+private fun CaptureButton(isCapturing: Boolean, onClick: () -> Unit) {
+    val infiniteTransition = rememberInfiniteTransition(label = "capture_pulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (isCapturing) 1.18f else 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 600),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse_scale"
+    )
+    val buttonColor by animateColorAsState(
+        targetValue = if (isCapturing) MaterialTheme.colorScheme.errorContainer
+        else MaterialTheme.colorScheme.primary,
+        label = "button_color"
+    )
+    val iconColor by animateColorAsState(
+        targetValue = if (isCapturing) MaterialTheme.colorScheme.onErrorContainer
+        else MaterialTheme.colorScheme.onPrimary,
+        label = "icon_color"
+    )
+    Button(
+        onClick = onClick,
+        shape = CircleShape,
+        colors = ButtonDefaults.buttonColors(containerColor = buttonColor),
+        modifier = Modifier
+            .size(74.dp)
+            .scale(pulseScale)
+    ) {
+        Icon(
+            imageVector = if (isCapturing) Icons.Default.Stop else Icons.Default.PhotoCamera,
+            contentDescription = if (isCapturing) "Stop long exposure" else "Start long exposure",
+            tint = iconColor
+        )
     }
 }
 
