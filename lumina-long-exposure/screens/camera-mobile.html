@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>PRO-LENS v2.4 | Long Exposure Engine</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 200, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-panel {
+            backdrop-filter: blur(24px);
+            background: rgba(5, 20, 36, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .neon-glow-primary {
+            filter: drop-shadow(0 0 8px rgba(0, 242, 255, 0.6));
+        }
+        .grid-overlay {
+            background-image: 
+                linear-gradient(to right, rgba(0, 242, 255, 0.05) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0, 242, 255, 0.05) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #00f2ff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0, 242, 255, 0.8);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            background: #00f2ff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0, 242, 255, 0.8);
+        }
+    </style>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "on-error-container": "#ffdad6",
+                    "primary-container": "#00f2ff",
+                    "surface-container-high": "#1c2b3c",
+                    "primary-fixed": "#74f5ff",
+                    "primary": "#e1fdff",
+                    "on-secondary-container": "#480064",
+                    "error": "#ffb4ab",
+                    "inverse-surface": "#d4e4fa",
+                    "outline-variant": "#3a494b",
+                    "error-container": "#93000a",
+                    "secondary-fixed-dim": "#ebb2ff",
+                    "tertiary-fixed-dim": "#bec6e0",
+                    "inverse-primary": "#00696f",
+                    "on-background": "#d4e4fa",
+                    "surface-bright": "#2c3a4c",
+                    "surface-container-highest": "#273647",
+                    "on-error": "#690005",
+                    "primary-fixed-dim": "#00dbe7",
+                    "on-tertiary-fixed": "#131b2e",
+                    "on-primary-fixed": "#002022",
+                    "on-secondary-fixed": "#320047",
+                    "tertiary": "#f7f6ff",
+                    "on-primary": "#00363a",
+                    "secondary": "#ebb2ff",
+                    "surface": "#051424",
+                    "on-secondary-fixed-variant": "#74009f",
+                    "surface-container-low": "#0d1c2d",
+                    "background": "#051424",
+                    "surface-variant": "#273647",
+                    "tertiary-fixed": "#dae2fd",
+                    "on-primary-container": "#006a71",
+                    "secondary-fixed": "#f8d8ff",
+                    "surface-dim": "#051424",
+                    "on-tertiary-container": "#575f75",
+                    "surface-tint": "#00dbe7",
+                    "outline": "#849495",
+                    "on-tertiary-fixed-variant": "#3f465c",
+                    "surface-container": "#122131",
+                    "inverse-on-surface": "#233143",
+                    "secondary-container": "#ce5dff",
+                    "on-surface": "#d4e4fa",
+                    "tertiary-container": "#d3daf5",
+                    "on-surface-variant": "#b9cacb",
+                    "on-primary-fixed-variant": "#004f54",
+                    "on-secondary": "#520071",
+                    "surface-container-lowest": "#010f1f",
+                    "on-tertiary": "#283044"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "unit": "4px",
+                    "panel-padding": "12px",
+                    "margin-edge": "24px",
+                    "gutter": "16px"
+            },
+            "fontFamily": {
+                    "readout-lg": ["Space Grotesk"],
+                    "headline-lg": ["Space Grotesk"],
+                    "body-md": ["Space Grotesk"],
+                    "headline-md": ["Space Grotesk"],
+                    "label-sm": ["Space Grotesk"],
+                    "label-caps": ["Space Grotesk"]
+            },
+            "fontSize": {
+                    "readout-lg": ["18px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                    "headline-lg": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                    "headline-md": ["24px", {"lineHeight": "1.3", "fontWeight": "600"}],
+                    "label-sm": ["10px", {"lineHeight": "1", "fontWeight": "400"}],
+                    "label-caps": ["12px", {"lineHeight": "1", "letterSpacing": "0.1em", "fontWeight": "700"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface font-body-md overflow-hidden h-screen w-screen selection:bg-primary-container/30">
+<!-- Viewfinder Background -->
+<div class="fixed inset-0 z-0">
+<img class="w-full h-full object-cover brightness-50 contrast-125" data-alt="long exposure night cityscape with vibrant light trails from cars on a multi-lane highway at dusk with neon building lights" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDNTztyals1BZn66fHOoqWhuU4_U6C3jZM4hbsBoNEYHei3PhtNRD_2tPixtqh7PN-hybifCTX6fubC7e9chRz3Bv3sys3A4USNfEpmm8nYAgsEsuw9vhW8owrGNTmBETlK9g24yjWPavjSCVN9ASaHj1dA97d_T5o53ZO2V5_4MNr4sq0Z2CSmhQBsx5gVVQdEnub9gQL5jwWLnz3tS32Hu59vaIEOuRfr9-Ej_8s54bbZkZ4Mm62uSe9TORfnW2XKTQArY99wM0U"/>
+<div class="absolute inset-0 grid-overlay opacity-20 pointer-events-none"></div>
+<div class="absolute inset-0 bg-gradient-to-t from-surface via-transparent to-surface/40 pointer-events-none"></div>
+</div>
+<!-- Shared Component: TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 py-4 bg-slate-950/40 backdrop-blur-xl border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)]">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-cyan-400" data-icon="sensors">sensors</span>
+<span class="font-black tracking-tighter text-cyan-400 drop-shadow-[0_0_8px_rgba(0,242,255,0.6)] font-headline-md uppercase">PRO-LENS v2.4</span>
+</div>
+<div class="flex gap-8 items-center md:flex hidden">
+<div class="flex flex-col items-end">
+<span class="font-label-caps text-label-caps text-slate-500 uppercase">System Status</span>
+<span class="font-readout-lg text-readout-lg text-cyan-400">READY</span>
+</div>
+<div class="flex flex-col items-end border-l border-white/10 pl-8">
+<span class="font-label-caps text-label-caps text-slate-500 uppercase">Buffer</span>
+<span class="font-readout-lg text-readout-lg text-cyan-400">98%</span>
+</div>
+</div>
+<button class="transition-all duration-300 ease-out active:scale-95 text-cyan-400 hover:text-cyan-400 hover:bg-white/5 p-2 rounded-full">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+</header>
+<!-- Technical Readouts Overlay -->
+<div class="fixed top-24 left-1/2 -translate-x-1/2 z-40 flex gap-6 px-8 py-3 glass-panel rounded-full border border-cyan-400/20">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+<span class="font-readout-lg text-readout-lg text-white font-mono">REC: 04:20s</span>
+</div>
+<div class="h-4 w-px bg-white/10 self-center"></div>
+<div class="flex items-center gap-2">
+<span class="font-label-caps text-label-caps text-on-surface-variant">ISO</span>
+<span class="font-readout-lg text-readout-lg text-primary-container">400</span>
+</div>
+<div class="h-4 w-px bg-white/10 self-center"></div>
+<div class="flex items-center gap-2">
+<span class="font-label-caps text-label-caps text-on-surface-variant">SS</span>
+<span class="font-readout-lg text-readout-lg text-primary-container">15.0s</span>
+</div>
+</div>
+<!-- HUD Crosshair -->
+<div class="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+<div class="relative w-48 h-48">
+<div class="absolute top-0 left-1/2 -translate-x-1/2 w-px h-4 bg-primary-container/40"></div>
+<div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-px h-4 bg-primary-container/40"></div>
+<div class="absolute left-0 top-1/2 -translate-y-1/2 h-px w-4 bg-primary-container/40"></div>
+<div class="absolute right-0 top-1/2 -translate-y-1/2 h-px w-4 bg-primary-container/40"></div>
+<div class="absolute inset-0 border border-primary-container/10 rounded-full scale-90"></div>
+<div class="absolute inset-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-1 bg-primary-container rounded-full neon-glow-primary"></div>
+</div>
+</div>
+<!-- Main Control Panel (Bottom) -->
+<div class="fixed bottom-0 left-0 w-full z-50 flex flex-col items-center">
+<!-- Controls Glass Drawer -->
+<div class="w-full max-w-4xl mx-auto glass-panel rounded-t-3xl p-6 pb-24 shadow-[0_-20px_50px_rgba(0,0,0,0.5)]">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+<!-- Manual Sliders Cluster -->
+<div class="space-y-6">
+<div class="space-y-2">
+<div class="flex justify-between items-end px-1">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest">ISO Sensitivity</span>
+<span class="font-readout-lg text-readout-lg text-primary-container">1600</span>
+</div>
+<input class="w-full h-1 bg-surface-container-highest rounded-full appearance-none cursor-pointer accent-primary-container" max="12800" min="100" step="100" type="range" value="1600"/>
+<div class="flex justify-between px-1">
+<span class="text-[8px] text-slate-500">100</span>
+<span class="text-[8px] text-slate-500">12800</span>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between items-end px-1">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest">Shutter Speed</span>
+<span class="font-readout-lg text-readout-lg text-primary-container">15.0s</span>
+</div>
+<input class="w-full h-1 bg-surface-container-highest rounded-full appearance-none cursor-pointer accent-primary-container" max="30" min="0" step="0.5" type="range" value="15"/>
+<div class="flex justify-between px-1">
+<span class="text-[8px] text-slate-500">1/8000s</span>
+<span class="text-[8px] text-slate-500">30s</span>
+</div>
+</div>
+</div>
+<div class="space-y-6">
+<div class="space-y-2">
+<div class="flex justify-between items-end px-1">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest">White Balance</span>
+<span class="font-readout-lg text-readout-lg text-primary-container">5600K</span>
+</div>
+<input class="w-full h-1 bg-surface-container-highest rounded-full appearance-none cursor-pointer accent-primary-container" max="10000" min="2000" step="100" type="range" value="5600"/>
+<div class="flex justify-between px-1">
+<span class="text-[8px] text-slate-500">2000K</span>
+<span class="text-[8px] text-slate-500">10000K</span>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between items-end px-1">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-widest">EV Bias</span>
+<span class="font-readout-lg text-readout-lg text-primary-container">-0.3</span>
+</div>
+<input class="w-full h-1 bg-surface-container-highest rounded-full appearance-none cursor-pointer accent-primary-container" max="3" min="-3" step="0.1" type="range" value="-0.3"/>
+<div class="flex justify-between px-1">
+<span class="text-[8px] text-slate-500">-3.0</span>
+<span class="text-[8px] text-slate-500">+3.0</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Mode Switchers -->
+<div class="flex flex-wrap justify-between items-center gap-4 border-t border-white/5 pt-6">
+<div class="flex items-center gap-3">
+<span class="font-label-caps text-label-caps text-slate-500 uppercase mr-2">Blend Mode</span>
+<div class="flex bg-surface-container-low rounded-lg p-1 border border-white/5">
+<button class="px-4 py-2 font-label-caps text-label-caps text-slate-400 hover:text-white transition-colors">Lighten</button>
+<button class="px-4 py-2 font-label-caps text-label-caps bg-primary-container/10 text-primary-container border border-primary-container/30 rounded-md">Screen</button>
+<button class="px-4 py-2 font-label-caps text-label-caps text-slate-400 hover:text-white transition-colors">Additive</button>
+</div>
+</div>
+<button class="flex items-center gap-2 px-6 py-3 glass-panel rounded-full border border-primary-container/20 hover:border-primary-container/50 transition-all group">
+<span class="material-symbols-outlined text-primary-container group-hover:scale-110 transition-transform" data-icon="filter_tilt_shift">filter_tilt_shift</span>
+<span class="font-label-caps text-label-caps uppercase tracking-widest">Engine Effects</span>
+</button>
+</div>
+</div>
+<!-- Shared Component: BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-4 pb-8 pt-4 bg-slate-950/20 backdrop-blur-2xl rounded-t-2xl border-t border-white/10 shadow-[0_-10px_40px_rgba(0,242,255,0.05)]">
+<button class="flex items-center justify-center text-slate-400 opacity-60 hover:opacity-100 hover:text-cyan-200 transition-all duration-300">
+<span class="material-symbols-outlined" data-icon="aperture">shutter_speed</span>
+</button>
+<button class="flex items-center justify-center text-slate-400 opacity-60 hover:opacity-100 hover:text-cyan-200 transition-all duration-300">
+<span class="material-symbols-outlined" data-icon="timer">timer</span>
+</button>
+<!-- Central Shutter Button -->
+<button class="relative flex items-center justify-center -top-8 w-20 h-20 bg-surface rounded-full border-4 border-cyan-400/30 group active:scale-95 transition-all duration-300">
+<div class="absolute inset-0 rounded-full bg-cyan-400/10 blur-xl opacity-50 group-hover:opacity-100"></div>
+<div class="w-16 h-16 rounded-full border-2 border-cyan-400 flex items-center justify-center bg-transparent">
+<div class="w-12 h-12 rounded-full bg-cyan-400 drop-shadow-[0_0_12px_rgba(0,242,255,0.8)] flex items-center justify-center">
+<span class="material-symbols-outlined text-surface font-black" data-icon="radio_button_checked">radio_button_checked</span>
+</div>
+</div>
+</button>
+<button class="flex items-center justify-center text-cyan-400 drop-shadow-[0_0_12px_rgba(0,242,255,0.8)] scale-110 transition-all duration-300 ring-2 ring-cyan-400/30 rounded-full p-2">
+<span class="material-symbols-outlined" data-icon="filter_tilt_shift">filter_tilt_shift</span>
+</button>
+<button class="flex items-center justify-center text-slate-400 opacity-60 hover:opacity-100 hover:text-cyan-200 transition-all duration-300">
+<span class="material-symbols-outlined" data-icon="analytics">analytics</span>
+</button>
+</nav>
+</div>
+<!-- Metadata Readout Corner -->
+<div class="fixed top-24 right-6 z-40 flex flex-col gap-2 items-end pointer-events-none">
+<div class="glass-panel px-3 py-1 rounded border-l-2 border-cyan-400">
+<span class="font-label-sm text-[10px] text-slate-400 block uppercase">F-Stop</span>
+<span class="font-readout-lg text-primary-container">f/1.8</span>
+</div>
+<div class="glass-panel px-3 py-1 rounded border-l-2 border-cyan-400">
+<span class="font-label-sm text-[10px] text-slate-400 block uppercase">Focus</span>
+<span class="font-readout-lg text-primary-container">INF</span>
+</div>
+<div class="glass-panel px-3 py-1 rounded border-l-2 border-cyan-400">
+<span class="font-label-sm text-[10px] text-slate-400 block uppercase">Codec</span>
+<span class="font-readout-lg text-primary-container">RAW</span>
+</div>
+</div>
+<!-- Histogram Simulation -->
+<div class="fixed top-24 left-6 z-40 w-32 h-16 glass-panel p-2 flex items-end gap-0.5 border border-white/5 pointer-events-none">
+<div class="bg-cyan-400/40 w-full" style="height: 20%"></div>
+<div class="bg-cyan-400/40 w-full" style="height: 35%"></div>
+<div class="bg-cyan-400/40 w-full" style="height: 45%"></div>
+<div class="bg-cyan-400/40 w-full" style="height: 80%"></div>
+<div class="bg-cyan-400/40 w-full" style="height: 60%"></div>
+<div class="bg-cyan-400/40 w-full" style="height: 40%"></div>
+<div class="bg-cyan-400/40 w-full" style="height: 25%"></div>
+<div class="bg-cyan-400/40 w-full" style="height: 15%"></div>
+<div class="absolute inset-0 flex flex-col justify-between p-1 opacity-50">
+<div class="w-full h-px bg-white/10"></div>
+<div class="w-full h-px bg-white/10"></div>
+</div>
+</div>
+</body></html>

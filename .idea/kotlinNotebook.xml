@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="KotlinNotebookOptionsProvider">
+    <option name="jdkName" value="jbr-17" />
+    <option name="shouldFocusOnNotebookVariables" value="true" />
+    <option name="shouldShowNotebookVariables" value="true" />
+  </component>
+</project>
