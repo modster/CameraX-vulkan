@@ -54,9 +54,11 @@ class MainViewModel(
      * Begin a new long-exposure accumulation pass.
      *
      * @param blendMode Selected UI mode, mapped to engine-level [engine.exposure.ExposureBlendMode].
+     * @param blendStrength Normalized blend intensity in `[0f, 1f]`.
      */
-    fun startLongExposure(blendMode: ExposureBlendUiMode) {
+    fun startLongExposure(blendMode: ExposureBlendUiMode, blendStrength: Float) {
         frameAccumulator.blendMode = blendMode.engineMode
+        frameAccumulator.blendStrength = blendStrength.coerceIn(0f, 1f)
         frameAccumulator.reset()
         analyzedFrameCount = 0
         _liveAccumulatedFrame.value = null

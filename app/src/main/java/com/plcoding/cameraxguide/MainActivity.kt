@@ -109,6 +109,8 @@ class MainActivity : ComponentActivity() {
                 var shutter by remember { mutableFloatStateOf(15f) }
                 var whiteBalance by remember { mutableFloatStateOf(5600f) }
                 var evBias by remember { mutableFloatStateOf(-0.3f) }
+                var blendStrength by remember { mutableFloatStateOf(0.75f) }
+                var isSettingsDrawerMinimized by remember { mutableStateOf(true) }
                 var selectedBlendMode by remember { mutableStateOf<ExposureBlendUiMode>(ExposureBlendUiMode.SCREEN) }
                 val controller = remember {
                     LifecycleCameraController(applicationContext).apply {
@@ -282,6 +284,11 @@ class MainActivity : ComponentActivity() {
                                 onWhiteBalanceChange = { whiteBalance = it },
                                 evBias = evBias,
                                 onEvBiasChange = { evBias = it },
+                                blendStrength = blendStrength,
+                                onBlendStrengthChange = { blendStrength = it },
+                                isMinimized = isSettingsDrawerMinimized,
+                                onMinimize = { isSettingsDrawerMinimized = true },
+                                onMaximize = { isSettingsDrawerMinimized = false },
                                 selectedBlendMode = selectedBlendMode,
                                 onBlendModeSelected = { selectedBlendMode = it }
                             )
@@ -295,7 +302,10 @@ class MainActivity : ComponentActivity() {
                                     if (isLongExposureActive) {
                                         viewModel.stopLongExposure()
                                     } else {
-                                        viewModel.startLongExposure(selectedBlendMode)
+                                        viewModel.startLongExposure(
+                                            blendMode = selectedBlendMode,
+                                            blendStrength = blendStrength
+                                        )
                                     }
                                 }
                             )
@@ -366,7 +376,8 @@ class MainActivity : ComponentActivity() {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
                 Manifest.permission.READ_MEDIA_IMAGES
             }
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> {
+//            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> {
+                true -> {
                 Manifest.permission.READ_EXTERNAL_STORAGE
             }
             else -> null
@@ -531,6 +542,11 @@ private fun ManualControlsDrawer(
     onWhiteBalanceChange: (Float) -> Unit,
     evBias: Float,
     onEvBiasChange: (Float) -> Unit,
+    blendStrength: Float,
+    onBlendStrengthChange: (Float) -> Unit,
+    isMinimized: Boolean,
+    onMinimize: () -> Unit,
+    onMaximize: () -> Unit,
     selectedBlendMode: ExposureBlendUiMode,
     onBlendModeSelected: (ExposureBlendUiMode) -> Unit
 ) {
@@ -543,37 +559,72 @@ private fun ManualControlsDrawer(
             .padding(AppSpacing.Gutter),
         verticalArrangement = Arrangement.spacedBy(AppSpacing.Unit)
     ) {
-        LabeledSlider("ISO SENSITIVITY", iso.toInt().toString(), iso, 100f..12800f, onIsoChange)
-        LabeledSlider("SHUTTER SPEED", "%.1f".format(shutter) + "s", shutter, 0f..30f, onShutterChange)
-        LabeledSlider("WHITE BALANCE", whiteBalance.toInt().toString() + "K", whiteBalance, 2000f..10000f, onWhiteBalanceChange)
-        LabeledSlider("EV BIAS", "%.1f".format(evBias), evBias, -3f..3f, onEvBiasChange)
-
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("BLEND MODE", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                text = "SETTINGS",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Surface(
+                    shape = AppShapes.Sm,
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    onClick = if (isMinimized) onMaximize else onMinimize
+                ) {
+                    Text(
+                        text = if (isMinimized) "+" else "-",
+                        modifier = Modifier.padding(horizontal = AppSpacing.PanelPadding, vertical = AppSpacing.Unit),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        if (!isMinimized) {
+            LabeledSlider("ISO SENSITIVITY", iso.toInt().toString(), iso, 100f..12800f, onIsoChange)
+            LabeledSlider("SHUTTER SPEED", "%.1f".format(shutter) + "s", shutter, 0f..30f, onShutterChange)
+            LabeledSlider("WHITE BALANCE", whiteBalance.toInt().toString() + "K", whiteBalance, 2000f..10000f, onWhiteBalanceChange)
+            LabeledSlider("EV BIAS", "%.1f".format(evBias), evBias, -3f..3f, onEvBiasChange)
+            LabeledSlider(
+                "STRENGTH",
+                (blendStrength * 100f).toInt().toString() + "%",
+                blendStrength,
+                0f..1f,
+                onBlendStrengthChange
+            )
+
             Row(
-                modifier = Modifier
-                    .clip(AppShapes.Default)
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
-                    .padding(2.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                ExposureBlendUiMode.all.forEach { mode ->
-                    val selected = mode == selectedBlendMode
-                    Surface(
-                        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceContainer,
-                        shape = AppShapes.Sm,
-                        onClick = { onBlendModeSelected(mode) }
-                    ) {
-                        Text(
-                            text = mode.label,
-                            modifier = Modifier.padding(horizontal = AppSpacing.PanelPadding, vertical = AppSpacing.Unit),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                Text("BLEND MODE", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(
+                    modifier = Modifier
+                        .clip(AppShapes.Default)
+                        .background(MaterialTheme.colorScheme.surfaceContainer)
+                        .padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    ExposureBlendUiMode.all.forEach { mode ->
+                        val selected = mode == selectedBlendMode
+                        Surface(
+                            color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceContainer,
+                            shape = AppShapes.Sm,
+                            onClick = { onBlendModeSelected(mode) }
+                        ) {
+                            Text(
+                                text = mode.label,
+                                modifier = Modifier.padding(horizontal = AppSpacing.PanelPadding, vertical = AppSpacing.Unit),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }

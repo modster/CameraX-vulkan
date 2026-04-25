@@ -12,6 +12,9 @@ interface FrameAccumulator {
     /** Active blend mode; apply before [reset] to start a new exposure pass. */
     var blendMode: ExposureBlendMode
 
+    /** Blend intensity in `[0f, 1f]`; `0f` means no additional blend influence. */
+    var blendStrength: Float
+
     /** Number of frames merged since the last [reset]. */
     val frameCount: Int
 

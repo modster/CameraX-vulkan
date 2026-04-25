@@ -14,6 +14,15 @@ class BitmapFrameAccumulator : FrameAccumulator {
     override var blendMode: ExposureBlendMode = ExposureBlendMode.SCREEN
 
     @Volatile
+    private var strengthInternal: Float = 1f
+
+    override var blendStrength: Float
+        get() = strengthInternal
+        set(value) {
+            strengthInternal = value.coerceIn(0f, 1f)
+        }
+
+    @Volatile
     private var accumulated: Bitmap? = null
 
     @Volatile
@@ -38,6 +47,7 @@ class BitmapFrameAccumulator : FrameAccumulator {
                 frameCount = 1
             } else {
                 blendPaint.xfermode = PorterDuffXfermode(blendMode.toPorterDuffMode())
+                blendPaint.alpha = (blendStrength * 255f).toInt().coerceIn(0, 255)
                 Canvas(acc).drawBitmap(frame, 0f, 0f, blendPaint)
                 frameCount++
             }
