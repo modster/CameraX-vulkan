@@ -8,6 +8,9 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.plcoding.cameraxguide.data.PhotoRepository
 import com.plcoding.cameraxguide.model.CapturedPhoto
+import com.plcoding.cameraxguide.model.ExposureBlendUiMode
+import engine.exposure.BitmapFrameAccumulator
+import engine.exposure.FrameAccumulator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -30,34 +33,33 @@ class MainViewModel(
     // Long-exposure state
     // ---------------------------------------------------------------------------
 
-    /** The accumulation engine that blends frames together like a GPU render pass. */
-    val longExposureProcessor = LongExposureProcessor()
+    /** Long-exposure accumulation backend (software now, Vulkan/GL-ready contract). */
+    private val frameAccumulator: FrameAccumulator = BitmapFrameAccumulator()
 
     private val _isLongExposureActive = MutableStateFlow(false)
     val isLongExposureActive: StateFlow<Boolean> = _isLongExposureActive.asStateFlow()
 
-    /** Live snapshot of the accumulation buffer; updates at ~10 fps while capturing. */
-    val liveAccumulatedFrame: StateFlow<Bitmap?> = longExposureProcessor.output
+    private val _liveAccumulatedFrame = MutableStateFlow<Bitmap?>(null)
+    /** Live snapshot of the accumulation buffer; throttled in app for cleaner layering. */
+    val liveAccumulatedFrame: StateFlow<Bitmap?> = _liveAccumulatedFrame.asStateFlow()
 
     private val _exposureDurationMs = MutableStateFlow(0L)
     val exposureDurationMs: StateFlow<Long> = _exposureDurationMs.asStateFlow()
 
     private var exposureStartTimeMs = 0L
     private var timerJob: Job? = null
+    private var analyzedFrameCount = 0
 
     /**
      * Begin a new long-exposure accumulation pass.
      *
-     * @param blendModeIndex 0 = Lighten, 1 = Screen, 2 = Additive — matches the
-     *   existing blend-mode toggle buttons in the UI.
+     * @param blendMode Selected UI mode, mapped to engine-level [engine.exposure.ExposureBlendMode].
      */
-    fun startLongExposure(blendModeIndex: Int) {
-        longExposureProcessor.blendMode = when (blendModeIndex) {
-            0 -> LongExposureProcessor.BlendMode.LIGHTEN
-            2 -> LongExposureProcessor.BlendMode.ADDITIVE
-            else -> LongExposureProcessor.BlendMode.SCREEN
-        }
-        longExposureProcessor.reset()
+    fun startLongExposure(blendMode: ExposureBlendUiMode) {
+        frameAccumulator.blendMode = blendMode.engineMode
+        frameAccumulator.reset()
+        analyzedFrameCount = 0
+        _liveAccumulatedFrame.value = null
         exposureStartTimeMs = System.currentTimeMillis()
         _exposureDurationMs.value = 0L
         _isLongExposureActive.value = true
@@ -76,7 +78,8 @@ class MainViewModel(
     fun stopLongExposure(): Bitmap? {
         _isLongExposureActive.value = false
         timerJob?.cancel()
-        val finalFrame = longExposureProcessor.getFinalFrame() ?: return null
+        val finalFrame = frameAccumulator.getFinalFrame() ?: return null
+        _liveAccumulatedFrame.value = null
         onTakePhoto(finalFrame)
         onPersistPhoto(finalFrame)
         return finalFrame
@@ -84,12 +87,16 @@ class MainViewModel(
 
     /**
      * Called from the ImageAnalysis executor thread for every camera frame.
-     * Forwards the frame to [longExposureProcessor] only when a capture is active.
+     * Forwards the frame to [frameAccumulator] only when a capture is active.
      * The caller remains responsible for recycling [bitmap] after this returns.
      */
     fun onFrameAnalyzed(bitmap: Bitmap) {
         if (_isLongExposureActive.value) {
-            longExposureProcessor.accumulate(bitmap)
+            frameAccumulator.accumulate(bitmap)
+            analyzedFrameCount++
+            if (analyzedFrameCount == 1 || analyzedFrameCount % 3 == 0) {
+                _liveAccumulatedFrame.value = frameAccumulator.snapshot()
+            }
         }
     }
 
@@ -118,6 +125,11 @@ class MainViewModel(
                 photoRepository.getPhotos()
             }
         }
+    }
+
+    override fun onCleared() {
+        frameAccumulator.reset()
+        super.onCleared()
     }
 
     companion object {

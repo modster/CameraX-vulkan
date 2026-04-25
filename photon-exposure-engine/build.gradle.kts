@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "com.greeffer.mylibrary"
+    namespace = "engine.exposure"
     compileSdk {
         version = release(37)
     }

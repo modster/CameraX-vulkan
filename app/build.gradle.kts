@@ -77,4 +77,5 @@ dependencies {
     implementation("androidx.camera:camera-view:$cameraxVersion")
     implementation("androidx.camera:camera-extensions:$cameraxVersion")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation(project(":photon-exposure-engine"))
 }

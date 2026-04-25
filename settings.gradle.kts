@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "CameraXGuide"
 include(":app")
-include(":mylibrary")
+include(":photon-exposure-engine")

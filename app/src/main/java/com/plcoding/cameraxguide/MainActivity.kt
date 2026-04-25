@@ -64,7 +64,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -85,6 +85,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.plcoding.cameraxguide.data.MediaStorePhotoDataSource
 import com.plcoding.cameraxguide.data.PhotoRepositoryImpl
+import com.plcoding.cameraxguide.model.ExposureBlendUiMode
 import com.plcoding.cameraxguide.ui.theme.AppShapes
 import com.plcoding.cameraxguide.ui.theme.AppSpacing
 import com.plcoding.cameraxguide.ui.theme.CameraXGuideTheme
@@ -110,7 +111,7 @@ class MainActivity : ComponentActivity() {
                 var shutter by remember { mutableFloatStateOf(15f) }
                 var whiteBalance by remember { mutableFloatStateOf(5600f) }
                 var evBias by remember { mutableFloatStateOf(-0.3f) }
-                var blendModeIndex by remember { mutableIntStateOf(1) }
+                var selectedBlendMode by remember { mutableStateOf<ExposureBlendUiMode>(ExposureBlendUiMode.Screen) }
                 val controller = remember {
                     LifecycleCameraController(applicationContext).apply {
                         setEnabledUseCases(
@@ -279,8 +280,8 @@ class MainActivity : ComponentActivity() {
                                 onWhiteBalanceChange = { whiteBalance = it },
                                 evBias = evBias,
                                 onEvBiasChange = { evBias = it },
-                                blendModeIndex = blendModeIndex,
-                                onBlendModeSelected = { blendModeIndex = it }
+                                selectedBlendMode = selectedBlendMode,
+                                onBlendModeSelected = { selectedBlendMode = it }
                             )
                             Spacer(modifier = Modifier.height(AppSpacing.Gutter))
                             BottomCaptureNav(
@@ -292,7 +293,7 @@ class MainActivity : ComponentActivity() {
                                     if (isLongExposureActive) {
                                         viewModel.stopLongExposure()
                                     } else {
-                                        viewModel.startLongExposure(blendModeIndex)
+                                        viewModel.startLongExposure(selectedBlendMode)
                                     }
                                 }
                             )
@@ -522,8 +523,8 @@ private fun ManualControlsDrawer(
     onWhiteBalanceChange: (Float) -> Unit,
     evBias: Float,
     onEvBiasChange: (Float) -> Unit,
-    blendModeIndex: Int,
-    onBlendModeSelected: (Int) -> Unit
+    selectedBlendMode: ExposureBlendUiMode,
+    onBlendModeSelected: (ExposureBlendUiMode) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -552,15 +553,15 @@ private fun ManualControlsDrawer(
                     .padding(2.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                listOf("Lighten", "Screen", "Additive").forEachIndexed { index, mode ->
-                    val selected = index == blendModeIndex
+                ExposureBlendUiMode.all.forEach { mode ->
+                    val selected = mode == selectedBlendMode
                     Surface(
                         color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceContainer,
                         shape = AppShapes.Sm,
-                        onClick = { onBlendModeSelected(index) }
+                        onClick = { onBlendModeSelected(mode) }
                     ) {
                         Text(
-                            text = mode,
+                            text = mode.label,
                             modifier = Modifier.padding(horizontal = AppSpacing.PanelPadding, vertical = AppSpacing.Unit),
                             style = MaterialTheme.typography.labelSmall,
                             color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.onSurfaceVariant

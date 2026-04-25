@@ -1,4 +1,4 @@
-package com.greeffer.mylibrary
+package engine.exposure
 
 import org.junit.Test
 
