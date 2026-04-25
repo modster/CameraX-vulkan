@@ -8,13 +8,10 @@ import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.os.Build
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageCapture.OnImageCapturedCallback
-import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
@@ -91,6 +88,7 @@ import com.plcoding.cameraxguide.ui.theme.AppSpacing
 import com.plcoding.cameraxguide.ui.theme.CameraXGuideTheme
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -111,7 +109,7 @@ class MainActivity : ComponentActivity() {
                 var shutter by remember { mutableFloatStateOf(15f) }
                 var whiteBalance by remember { mutableFloatStateOf(5600f) }
                 var evBias by remember { mutableFloatStateOf(-0.3f) }
-                var selectedBlendMode by remember { mutableStateOf<ExposureBlendUiMode>(ExposureBlendUiMode.Screen) }
+                var selectedBlendMode by remember { mutableStateOf<ExposureBlendUiMode>(ExposureBlendUiMode.SCREEN) }
                 val controller = remember {
                     LifecycleCameraController(applicationContext).apply {
                         setEnabledUseCases(
@@ -123,6 +121,7 @@ class MainActivity : ComponentActivity() {
                             ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
                     }
                 }
+                val isFrontCameraActive = remember { AtomicBoolean(false) }
                 val photoRepository = remember {
                     PhotoRepositoryImpl(
                         dataSource = MediaStorePhotoDataSource(contentResolver)
@@ -143,7 +142,10 @@ class MainActivity : ComponentActivity() {
                 val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
                 DisposableEffect(controller, viewModel) {
                     controller.setImageAnalysisAnalyzer(analysisExecutor) { imageProxy ->
-                        val bitmap = imageProxy.toBitmap()
+                        val isFrontCamera = isFrontCameraActive.get()
+                        val bitmap = imageProxy.toOrientedBitmap(
+                            mirrorHorizontally = isFrontCamera
+                        )
                         // Scale down to a manageable resolution while preserving the
                         // camera's native aspect ratio to avoid distortion.
                         val targetMaxDim = 960
@@ -229,9 +231,9 @@ class MainActivity : ComponentActivity() {
 
                         CameraTopBar(
                             onSwitchCamera = {
-                                controller.cameraSelector = if (
-                                    controller.cameraSelector == CameraSelector.DEFAULT_BACK_CAMERA
-                                ) {
+                                val useFrontCamera = !isFrontCameraActive.get()
+                                isFrontCameraActive.set(useFrontCamera)
+                                controller.cameraSelector = if (useFrontCamera) {
                                     CameraSelector.DEFAULT_FRONT_CAMERA
                                 } else {
                                     CameraSelector.DEFAULT_BACK_CAMERA
@@ -304,38 +306,35 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun takePhoto(
-        controller: LifecycleCameraController,
-        onPhotoTaken: (Bitmap) -> Unit
-    ) {
-        controller.takePicture(
-            ContextCompat.getMainExecutor(applicationContext),
-            object : OnImageCapturedCallback() {
-                override fun onCaptureSuccess(image: ImageProxy) {
-                    super.onCaptureSuccess(image)
+    private fun ImageProxy.toOrientedBitmap(mirrorHorizontally: Boolean = false): Bitmap {
+        val sourceBitmap = toBitmap()
+        val rotation = imageInfo.rotationDegrees.toFloat()
+        if (rotation == 0f && !mirrorHorizontally) {
+            return sourceBitmap
+        }
 
-                    val matrix = Matrix().apply {
-                        postRotate(image.imageInfo.rotationDegrees.toFloat())
-                    }
-                    val rotatedBitmap = Bitmap.createBitmap(
-                        image.toBitmap(),
-                        0,
-                        0,
-                        image.width,
-                        image.height,
-                        matrix,
-                        true
-                    )
-
-                    onPhotoTaken(rotatedBitmap)
-                }
-
-                override fun onError(exception: ImageCaptureException) {
-                    super.onError(exception)
-                    Log.e("Camera", "Couldn't take photo: ", exception)
-                }
+        val matrix = Matrix().apply {
+            if (rotation != 0f) {
+                postRotate(rotation)
             }
+            if (mirrorHorizontally) {
+                postScale(-1f, 1f)
+            }
+        }
+
+        val orientedBitmap = Bitmap.createBitmap(
+            sourceBitmap,
+            0,
+            0,
+            sourceBitmap.width,
+            sourceBitmap.height,
+            matrix,
+            true
         )
+        if (orientedBitmap != sourceBitmap) {
+            sourceBitmap.recycle()
+        }
+        return orientedBitmap
     }
 
     private fun hasRequiredPermissions(): Boolean {
@@ -354,13 +353,22 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requiredPermissions(): Array<String> {
-        return mediaReadPermission()?.let { READ_BASE_PERMISSIONS + it } ?: READ_BASE_PERMISSIONS
+        val mediaPermission = mediaReadPermission()
+        return if (mediaPermission != null) {
+            READ_BASE_PERMISSIONS + mediaPermission
+        } else {
+            READ_BASE_PERMISSIONS
+        }
     }
 
     private fun mediaReadPermission(): String? {
         return when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> Manifest.permission.READ_MEDIA_IMAGES
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> Manifest.permission.READ_EXTERNAL_STORAGE
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
+                Manifest.permission.READ_MEDIA_IMAGES
+            }
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> {
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            }
             else -> null
         }
     }
@@ -536,9 +544,9 @@ private fun ManualControlsDrawer(
         verticalArrangement = Arrangement.spacedBy(AppSpacing.Unit)
     ) {
         LabeledSlider("ISO SENSITIVITY", iso.toInt().toString(), iso, 100f..12800f, onIsoChange)
-        LabeledSlider("SHUTTER SPEED", "${"%.1f".format(shutter)}s", shutter, 0f..30f, onShutterChange)
-        LabeledSlider("WHITE BALANCE", "${whiteBalance.toInt()}K", whiteBalance, 2000f..10000f, onWhiteBalanceChange)
-        LabeledSlider("EV BIAS", "${"%.1f".format(evBias)}", evBias, -3f..3f, onEvBiasChange)
+        LabeledSlider("SHUTTER SPEED", "%.1f".format(shutter) + "s", shutter, 0f..30f, onShutterChange)
+        LabeledSlider("WHITE BALANCE", whiteBalance.toInt().toString() + "K", whiteBalance, 2000f..10000f, onWhiteBalanceChange)
+        LabeledSlider("EV BIAS", "%.1f".format(evBias), evBias, -3f..3f, onEvBiasChange)
 
         Row(
             modifier = Modifier.fillMaxWidth(),
